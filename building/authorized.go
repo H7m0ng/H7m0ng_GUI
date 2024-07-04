@@ -38,7 +38,7 @@ func CheckMacheID(uuid string) string {
 	currentDate := now.Format("20060102")
 	currentDateNum, _ := strconv.Atoi(currentDate)
 	if uuid == "51FA45CC-2C7B-11B2-A85C-E245BDC0124E" {
-		if currentDateNum < 20240703 {
+		if currentDateNum < 20240803 {
 			return "success"
 		}
 		println("已经过期啦")
