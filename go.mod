@@ -1,6 +1,6 @@
 module H7m0ng
 
-go 1.16
+go 1.21
 
 require (
 	fyne.io/fyne/v2 v2.2.2
