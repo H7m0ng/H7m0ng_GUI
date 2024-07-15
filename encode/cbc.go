@@ -3,43 +3,43 @@ package encode
 var (
 	CbcDecrypt = []string{
 		`func f(ciphertext []byte, randomKey, ivStr string) []byte {
-							keyBytes, err := hex.DecodeString(randomKey)
-							if err != nil {
-								return []byte{}
-							}
-							block, err := aes.NewCipher(keyBytes)
-							if err != nil {
-								return []byte{}
-							}
-							blockSize := block.BlockSize()
-							iv, err := hex.DecodeString(ivStr)
-							if err != nil {
-								return []byte{}
-							}
-							if len(iv) != blockSize {
-								return []byte{}
-							}
-							if len(ciphertext) < blockSize {
-								return []byte{}
-							}
-							ciphertext = ciphertext[blockSize:]
-							mode := cipher.NewCBCDecrypter(block, iv)
-							plaintext := make([]byte, len(ciphertext))
-							mode.CryptBlocks(plaintext, ciphertext)
-							plaintext, err = PKCS7Unpadding(plaintext)
-							if err != nil {
-								return []byte{}
-							}
-							return plaintext
-						}
-						func PKCS7Unpadding(data []byte) ([]byte, error) {
-							length := len(data)
-							unpadding := int(data[length-1])
-							if unpadding > length {
-								return nil, fmt.Errorf("invalid padding")
-							}
-							return data[:(length - unpadding)], nil
-						}`,
+			keyBytes, err := hex.DecodeString(randomKey)
+			if err != nil {
+				return []byte{}
+			}
+			block, err := aes.NewCipher(keyBytes)
+			if err != nil {
+				return []byte{}
+			}
+			blockSize := block.BlockSize()
+			iv, err := hex.DecodeString(ivStr)
+			if err != nil {
+				return []byte{}
+			}
+			if len(iv) != blockSize {
+				return []byte{}
+			}
+			if len(ciphertext) < blockSize {
+				return []byte{}
+			}
+			ciphertext = ciphertext[blockSize:]
+			mode := cipher.NewCBCDecrypter(block, iv)
+			plaintext := make([]byte, len(ciphertext))
+			mode.CryptBlocks(plaintext, ciphertext)
+			plaintext, err = PKCS7Unpadding(plaintext)
+			if err != nil {
+				return []byte{}
+			}
+				return plaintext
+			}
+		func PKCS7Unpadding(data []byte) ([]byte, error) {
+			length := len(data)
+			unpadding := int(data[length-1])
+			if unpadding > length {
+				return nil, fmt.Errorf("invalid padding")
+			}
+				return data[:(length - unpadding)], nil
+			}`,
 		`
 		"crypto/aes"
 		"fmt"

@@ -25,9 +25,6 @@ var (
 		}
 		`,
 		`
-		"crypto/aes"
- 		"crypto/cipher"
-  		"encoding/hex"
 		`,
 		`
 		"io/ioutil"

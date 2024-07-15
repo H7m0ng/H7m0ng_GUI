@@ -4,32 +4,31 @@ var (
 	CfbDecrypt = []string{
 		`
 	func f(ciphertext []byte, randomKey, ivStr string) ([]byte){
-							keyBytes, err := hex.DecodeString(randomKey)  
-							if err != nil {  
-								return nil
-							}  
-							block, err := aes.NewCipher(keyBytes)  
-							if err != nil {  
-								return nil 
-							}  
-							iv, err := hex.DecodeString(ivStr)  
-							if err != nil {  
-								return nil 
-							}  
-							if len(iv) != aes.BlockSize {  
-								return nil
-							}  
-							stream := cipher.NewCFBDecrypter(block, iv)  
-							plaintext := make([]byte, len(ciphertext))
-							stream.XORKeyStream(plaintext, ciphertext)
-							return plaintext
-							}
+		keyBytes, err := hex.DecodeString(randomKey)  
+		if err != nil {  
+			return nil
+		}  
+		block, err := aes.NewCipher(keyBytes)  
+		if err != nil {  
+			return nil 
+		}  
+		iv, err := hex.DecodeString(ivStr)  
+		if err != nil {  
+			return nil 
+		}  
+		if len(iv) != aes.BlockSize {  
+			return nil
+		}  
+		stream := cipher.NewCFBDecrypter(block, iv)  
+		plaintext := make([]byte, len(ciphertext))
+		stream.XORKeyStream(plaintext, ciphertext)
+		return plaintext
+		}
 		`,
 		`
 		"crypto/aes"
 		"crypto/cipher"
   		"encoding/hex"
-		"io/ioutil"
 		`,
 		`
 		"io/ioutil"

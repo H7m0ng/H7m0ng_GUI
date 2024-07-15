@@ -1,7 +1,7 @@
 package building
 
 import (
-	"H7m0ng/core"
+	"H7m0ng/fileSetting"
 	"fmt"
 	"github.com/gonutz/ide/w32"
 	"io/fs"
@@ -11,7 +11,8 @@ import (
 	"strings"
 )
 
-func BuildExe(buildOpt string) {
+// BuildExe 根据获取的参数选择编译方式
+func BuildExe(otherOpt, buildOpt string) {
 	println("start  build  exe......")
 	root := "./result" // 替换为你想要遍历的目录
 	goFiles, err := collectGoFiles(root)
@@ -26,7 +27,7 @@ func BuildExe(buildOpt string) {
 			buildOpt = "default"
 		}
 		if buildOpt == "default" {
-			cmd := exec.Command("go", "build", "-o", exeFilePath, filePath)
+			cmd := exec.Command(otherOpt, "build", "-o", exeFilePath, filePath)
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
 			println(cmd.String())
@@ -37,12 +38,12 @@ func BuildExe(buildOpt string) {
 				println("Error")
 				return
 			}
-			core.DelFile(filePath)
+			fileSetting.DelFile(filePath)
 		} else {
 			if buildOpt == "-ldflags=-w -s -trimpath" {
 				buildOpt1 := "-ldflags=-w -s"
 				buildOpt2 := "-trimpath"
-				cmd := exec.Command("go", "build", "-o", exeFilePath, buildOpt1, buildOpt2, filePath)
+				cmd := exec.Command(otherOpt, "build", "-o", exeFilePath, buildOpt1, buildOpt2, filePath)
 				cmd.Stdout = os.Stdout
 				cmd.Stderr = os.Stderr
 				println(cmd.String())
@@ -53,9 +54,9 @@ func BuildExe(buildOpt string) {
 					println("Error")
 					return
 				}
-				core.DelFile(filePath)
+				fileSetting.DelFile(filePath)
 			}
-			cmd := exec.Command("go", "build", "-o", exeFilePath, buildOpt, filePath)
+			cmd := exec.Command(otherOpt, "build", "-o", exeFilePath, buildOpt, filePath)
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
 			println(cmd.String())
@@ -66,12 +67,17 @@ func BuildExe(buildOpt string) {
 				println("Error")
 				return
 			}
-			core.DelFile(filePath)
+			fileSetting.DelFile(filePath)
 		}
 	}
-
-	println("Build Finally！")
+	if fileSetting.GoFileExists() {
+		BuildExe(otherOpt, buildOpt)
+	} else {
+		println("Build Finally！")
+		return
+	}
 }
+
 func collectGoFiles(dir string) ([]string, error) {
 	var goFiles []string
 	// 使用filepath.WalkDir遍历目录
@@ -95,6 +101,7 @@ func collectGoFiles(dir string) ([]string, error) {
 	return goFiles, nil // 返回收集到的.go文件名切片
 }
 
+// CloseWindows 该函数已经嵌入到所有模板中
 func CloseWindows(commandShow uintptr) {
 	console := w32.GetConsoleWindow()
 	if console != 0 {

